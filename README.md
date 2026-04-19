@@ -1,6 +1,7 @@
 # Soil Moisture Monitor
 
-CircuitPython project for an Adafruit STEMMA soil sensor. Reads moisture and temperature, shows LED status, and publishes to Home Assistant via MQTT.
+CircuitPython project for an Adafruit STEMMA soil sensor. Reads moisture and temperature, shows LED status, and publishes to Home Assistant via MQTT. I fit the QT Py in a clear film canister, helps show the LED blinks.
+
 
 ## Hardware
 
