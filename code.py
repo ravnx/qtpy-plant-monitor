@@ -102,11 +102,16 @@ while True:
     raw_moisture = ss.moisture_read()
     temp_c = ss.get_temp()
 
-    # Rolling average smoothing
+    # Median smoothing - resistant to spikes
     moisture_samples.append(raw_moisture)
     if len(moisture_samples) > SMOOTHING_SAMPLES:
         moisture_samples.pop(0)
-    moisture = sum(moisture_samples) // len(moisture_samples)
+    sorted_samples = sorted(moisture_samples)
+    mid = len(sorted_samples) // 2
+    if len(sorted_samples) % 2:
+        moisture = sorted_samples[mid]
+    else:
+        moisture = (sorted_samples[mid - 1] + sorted_samples[mid]) // 2
 
     print("Moisture:", moisture, "(raw:", raw_moisture, ") Temp C:", round(temp_c, 2))
 
@@ -115,7 +120,7 @@ while True:
     if now - last_publish >= PUBLISH_INTERVAL:
         payload = json.dumps({"moisture": moisture, "temperature": round(temp_c, 2)})
         try:
-            mqtt_client.publish(STATE_TOPIC, payload)
+            mqtt_client.publish(STATE_TOPIC, payload, retain=True)
             print("Published:", payload)
         except Exception as e:
             print("MQTT error:", e)
