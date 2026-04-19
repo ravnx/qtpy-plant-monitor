@@ -7,7 +7,7 @@
 # >= 500    | Green blink every 30 min
 #
 # Publishes moisture + temperature to Home Assistant via MQTT Discovery.
-# Configure broker credentials in settings.toml.
+# Configure broker credentials and thresholds in settings.toml.
 
 import time
 import os
@@ -21,10 +21,11 @@ from adafruit_seesaw.seesaw import Seesaw
 import adafruit_minimqtt.adafruit_minimqtt as MQTT
 
 # --- Config ---
-DRY_THRESHOLD = 400
-WET_THRESHOLD = 500
-GREEN_BLINK_INTERVAL = 30 * 60  # seconds
-PUBLISH_INTERVAL = 60           # seconds between MQTT publishes
+DRY_THRESHOLD = int(os.getenv("DRY_THRESHOLD", "400"))
+WET_THRESHOLD = int(os.getenv("WET_THRESHOLD", "500"))
+GREEN_BLINK_INTERVAL = int(os.getenv("GREEN_BLINK_INTERVAL", "1800"))  # seconds
+PUBLISH_INTERVAL = int(os.getenv("PUBLISH_INTERVAL", "60"))           # seconds between MQTT publishes
+SMOOTHING_SAMPLES = int(os.getenv("SMOOTHING_SAMPLES", "9"))          # rolling average window
 
 DEVICE_ID = os.getenv("MQTT_DEVICE_ID", "plant_monitor")
 MQTT_BROKER = os.getenv("MQTT_BROKER")
@@ -95,11 +96,19 @@ print("HA discovery published")
 last_green_blink = 0
 last_publish = 0
 yellow_state = False
+moisture_samples = []
 
 while True:
-    moisture = ss.moisture_read()
+    raw_moisture = ss.moisture_read()
     temp_c = ss.get_temp()
-    print("Moisture:", moisture, "Temp C:", round(temp_c, 2))
+
+    # Rolling average smoothing
+    moisture_samples.append(raw_moisture)
+    if len(moisture_samples) > SMOOTHING_SAMPLES:
+        moisture_samples.pop(0)
+    moisture = sum(moisture_samples) // len(moisture_samples)
+
+    print("Moisture:", moisture, "(raw:", raw_moisture, ") Temp C:", round(temp_c, 2))
 
     # Publish to MQTT on interval
     now = time.monotonic()
