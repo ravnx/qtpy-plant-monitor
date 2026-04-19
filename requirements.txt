@@ -1,0 +1,3 @@
+adafruit-circuitpython-neopixel
+adafruit-circuitpython-seesaw
+adafruit-circuitpython-minimqtt

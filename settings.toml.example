@@ -1,0 +1,8 @@
+CIRCUITPY_WIFI_SSID="your_wifi_ssid"
+CIRCUITPY_WIFI_PASSWORD="your_wifi_password"
+
+MQTT_BROKER="192.168.1.x"
+MQTT_PORT=1883
+MQTT_USERNAME="your_mqtt_user"
+MQTT_PASSWORD="your_mqtt_password"
+MQTT_DEVICE_ID="plant_monitor"
