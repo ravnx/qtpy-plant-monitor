@@ -134,6 +134,12 @@ while True:
     moisture_samples.append(raw_moisture)
     if len(moisture_samples) > SMOOTHING_SAMPLES:
         moisture_samples.pop(0)
+
+    if len(moisture_samples) < SMOOTHING_SAMPLES:
+        print("Warming up samples:", len(moisture_samples), "/", SMOOTHING_SAMPLES)
+        time.sleep(1)
+        continue
+
     sorted_samples = sorted(moisture_samples)
     mid = len(sorted_samples) // 2
     if len(sorted_samples) % 2:
