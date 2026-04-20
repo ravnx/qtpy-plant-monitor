@@ -13,7 +13,7 @@ CircuitPython project for an Adafruit STEMMA soil sensor. Reads moisture and tem
 | Moisture  | Light                      |
 |-----------|----------------------------|
 | < 400     | Solid red                  |
-| 400–499   | Brief yellow blink every 2 min |
+| 400–499   | Warning color (glow or blink, configurable) |
 | ≥ 500     | Brief green blink every 30 min |
 
 The sensor reads ~345 when held in air (not in soil).
@@ -44,7 +44,9 @@ Edit `/Volumes/CIRCUITPY/settings.toml`:
 - `DRY_THRESHOLD` / `WET_THRESHOLD` — moisture thresholds for LED colours
 - `PUBLISH_INTERVAL` — seconds between MQTT publishes (default: `60`)
 - `GREEN_BLINK_INTERVAL` — seconds between green blinks when wet (default: `1800`)
-- `YELLOW_BLINK_INTERVAL` — seconds between yellow reminder blinks when marginal (default: `120`)
+- `WARNING_COLOR` — RGB color for the marginal state as `"R,G,B"` (default: `"50,30,0"` amber)
+- `WARNING_MODE` — `glow` (steady) or `blink` (default: `glow`)
+- `WARNING_BLINK_INTERVAL` — seconds between blinks when `WARNING_MODE=blink` (default: `120`)
 - `SMOOTHING_SAMPLES` — median window size to reduce sensor noise (default: `9`)
 
 ### 3. Deploy code
@@ -69,9 +71,11 @@ All settings live in `settings.toml` (copy from `settings.toml.example`):
 |------------------------|---------|--------------------------------------------------|
 | `DRY_THRESHOLD`        | 400     | Below this = dry (red LED)                       |
 | `WET_THRESHOLD`        | 500     | Below this = marginal (yellow LED)               |
-| `GREEN_BLINK_INTERVAL` | 1800 s  | How often to blink green when wet                |
-| `YELLOW_BLINK_INTERVAL`| 120 s   | How often to blink yellow when marginal          |
-| `PUBLISH_INTERVAL`     | 60 s    | How often to publish to MQTT                     |
+| `GREEN_BLINK_INTERVAL` | 1800 s    | How often to blink green when wet                     |
+| `WARNING_COLOR`        | `50,30,0` | RGB color for marginal state (`"R,G,B"`)              |
+| `WARNING_MODE`         | `glow`    | `glow` (steady) or `blink`                            |
+| `WARNING_BLINK_INTERVAL`| 120 s    | Seconds between blinks (only when `WARNING_MODE=blink`) |
+| `PUBLISH_INTERVAL`     | 60 s      | How often to publish to MQTT                          |
 | `SMOOTHING_SAMPLES`    | 9       | Median window size to filter out sensor spikes   |
 
 ## Files

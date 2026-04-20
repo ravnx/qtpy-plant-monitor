@@ -24,9 +24,12 @@ import adafruit_minimqtt.adafruit_minimqtt as MQTT
 DRY_THRESHOLD = int(os.getenv("DRY_THRESHOLD", "400"))
 WET_THRESHOLD = int(os.getenv("WET_THRESHOLD", "500"))
 GREEN_BLINK_INTERVAL = int(os.getenv("GREEN_BLINK_INTERVAL", "1800"))  # seconds
-YELLOW_BLINK_INTERVAL = int(os.getenv("YELLOW_BLINK_INTERVAL", "120"))  # seconds
 PUBLISH_INTERVAL = int(os.getenv("PUBLISH_INTERVAL", "60"))           # seconds between MQTT publishes
 SMOOTHING_SAMPLES = int(os.getenv("SMOOTHING_SAMPLES", "9"))          # rolling average window
+_wc = os.getenv("WARNING_COLOR", "50,30,0").split(",")
+WARNING_COLOR = (int(_wc[0]), int(_wc[1]), int(_wc[2]))  # RGB for marginal state
+WARNING_MODE = os.getenv("WARNING_MODE", "glow")           # "glow" or "blink"
+WARNING_BLINK_INTERVAL = int(os.getenv("WARNING_BLINK_INTERVAL", "120"))  # seconds (blink mode only)
 
 DEVICE_ID = os.getenv("MQTT_DEVICE_ID", "plant_monitor")
 MQTT_BROKER = os.getenv("MQTT_BROKER")
@@ -42,8 +45,11 @@ print("DRY_THRESHOLD =", DRY_THRESHOLD)
 print("WET_THRESHOLD =", WET_THRESHOLD)
 print("PUBLISH_INTERVAL =", PUBLISH_INTERVAL)
 print("GREEN_BLINK_INTERVAL =", GREEN_BLINK_INTERVAL)
-print("YELLOW_BLINK_INTERVAL =", YELLOW_BLINK_INTERVAL)
 print("SMOOTHING_SAMPLES =", SMOOTHING_SAMPLES)
+print("WARNING_COLOR =", WARNING_COLOR)
+print("WARNING_MODE =", WARNING_MODE)
+if WARNING_MODE == "blink":
+    print("WARNING_BLINK_INTERVAL =", WARNING_BLINK_INTERVAL)
 
 # --- Hardware setup ---
 pixel = neopixel.NeoPixel(board.NEOPIXEL, 1, brightness=0.2, auto_write=True)
@@ -111,9 +117,8 @@ mqtt_client.publish(AVAILABILITY_TOPIC, "online", retain=True)
 
 # --- Main loop ---
 last_green_blink = 0
-last_yellow_blink = 0
+last_warning_blink = 0
 last_publish = 0
-yellow_state = False
 moisture_samples = []
 
 while True:
@@ -156,15 +161,16 @@ while True:
         time.sleep(2)
 
     elif moisture < WET_THRESHOLD:
-        # Blinking yellow - not quite wet enough, reminder on interval
-        if now - last_yellow_blink >= YELLOW_BLINK_INTERVAL:
-            yellow_state = not yellow_state
-            pixel[0] = (255, 150, 0) if yellow_state else (0, 0, 0)
-            time.sleep(0.5)
-            pixel[0] = (0, 0, 0)
-            last_yellow_blink = now
-        else:
-            pixel[0] = (0, 0, 0)
+        if WARNING_MODE == "blink":
+            if now - last_warning_blink >= WARNING_BLINK_INTERVAL:
+                pixel[0] = WARNING_COLOR
+                time.sleep(0.5)
+                pixel[0] = (0, 0, 0)
+                last_warning_blink = now
+            else:
+                pixel[0] = (0, 0, 0)
+        else:  # glow
+            pixel[0] = WARNING_COLOR
         time.sleep(2)
 
     else:
