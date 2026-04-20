@@ -24,6 +24,7 @@ import adafruit_minimqtt.adafruit_minimqtt as MQTT
 DRY_THRESHOLD = int(os.getenv("DRY_THRESHOLD", "400"))
 WET_THRESHOLD = int(os.getenv("WET_THRESHOLD", "500"))
 GREEN_BLINK_INTERVAL = int(os.getenv("GREEN_BLINK_INTERVAL", "1800"))  # seconds
+YELLOW_BLINK_INTERVAL = int(os.getenv("YELLOW_BLINK_INTERVAL", "120"))  # seconds
 PUBLISH_INTERVAL = int(os.getenv("PUBLISH_INTERVAL", "60"))           # seconds between MQTT publishes
 SMOOTHING_SAMPLES = int(os.getenv("SMOOTHING_SAMPLES", "9"))          # rolling average window
 
@@ -34,6 +35,15 @@ MQTT_USERNAME = os.getenv("MQTT_USERNAME")
 MQTT_PASSWORD = os.getenv("MQTT_PASSWORD")
 
 STATE_TOPIC = f"{DEVICE_ID}/state"
+AVAILABILITY_TOPIC = f"{DEVICE_ID}/availability"
+
+# Lets print out config values on startup for easy debugging
+print("DRY_THRESHOLD =", DRY_THRESHOLD)
+print("WET_THRESHOLD =", WET_THRESHOLD)
+print("PUBLISH_INTERVAL =", PUBLISH_INTERVAL)
+print("GREEN_BLINK_INTERVAL =", GREEN_BLINK_INTERVAL)
+print("YELLOW_BLINK_INTERVAL =", YELLOW_BLINK_INTERVAL)
+print("SMOOTHING_SAMPLES =", SMOOTHING_SAMPLES)
 
 # --- Hardware setup ---
 pixel = neopixel.NeoPixel(board.NEOPIXEL, 1, brightness=0.2, auto_write=True)
@@ -76,6 +86,9 @@ for sensor in [
         "value_template": "{{ value_json.moisture }}",
         "unit_of_measurement": "",
         "icon": "mdi:water",
+        "availability_topic": AVAILABILITY_TOPIC,
+        "payload_available": "online",
+        "payload_not_available": "offline",
     },
     {
         "unique_id": f"{DEVICE_ID}_temperature",
@@ -84,6 +97,9 @@ for sensor in [
         "value_template": "{{ value_json.temperature }}",
         "unit_of_measurement": "°C",
         "device_class": "temperature",
+        "availability_topic": AVAILABILITY_TOPIC,
+        "payload_available": "online",
+        "payload_not_available": "offline",
     },
 ]:
     sensor["device"] = device_info
@@ -91,9 +107,11 @@ for sensor in [
     mqtt_client.publish(topic, json.dumps(sensor), retain=True)
 
 print("HA discovery published")
+mqtt_client.publish(AVAILABILITY_TOPIC, "online", retain=True)
 
 # --- Main loop ---
 last_green_blink = 0
+last_yellow_blink = 0
 last_publish = 0
 yellow_state = False
 moisture_samples = []
@@ -126,6 +144,7 @@ while True:
             print("MQTT error:", e)
             try:
                 mqtt_client.reconnect()
+                mqtt_client.publish(AVAILABILITY_TOPIC, "online", retain=True)
             except Exception:
                 pass
         last_publish = now
@@ -137,10 +156,16 @@ while True:
         time.sleep(2)
 
     elif moisture < WET_THRESHOLD:
-        # Blinking yellow - not quite wet enough
-        yellow_state = not yellow_state
-        pixel[0] = (255, 150, 0) if yellow_state else (0, 0, 0)
-        time.sleep(0.5)
+        # Blinking yellow - not quite wet enough, reminder on interval
+        if now - last_yellow_blink >= YELLOW_BLINK_INTERVAL:
+            yellow_state = not yellow_state
+            pixel[0] = (255, 150, 0) if yellow_state else (0, 0, 0)
+            time.sleep(0.5)
+            pixel[0] = (0, 0, 0)
+            last_yellow_blink = now
+        else:
+            pixel[0] = (0, 0, 0)
+        time.sleep(2)
 
     else:
         # Wet enough - brief green blink every 30 minutes

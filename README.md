@@ -13,7 +13,7 @@ CircuitPython project for an Adafruit STEMMA soil sensor. Reads moisture and tem
 | Moisture  | Light                      |
 |-----------|----------------------------|
 | < 400     | Solid red                  |
-| 400–499   | Blinking yellow            |
+| 400–499   | Brief yellow blink every 2 min |
 | ≥ 500     | Brief green blink every 30 min |
 
 The sensor reads ~345 when held in air (not in soil).
@@ -41,6 +41,11 @@ Edit `/Volumes/CIRCUITPY/settings.toml`:
 - `MQTT_BROKER` — your Home Assistant IP address
 - `MQTT_USERNAME` / `MQTT_PASSWORD` — MQTT broker credentials (set up in HA)
 - `MQTT_DEVICE_ID` — unique ID for this device (default: `plant_monitor`)
+- `DRY_THRESHOLD` / `WET_THRESHOLD` — moisture thresholds for LED colours
+- `PUBLISH_INTERVAL` — seconds between MQTT publishes (default: `60`)
+- `GREEN_BLINK_INTERVAL` — seconds between green blinks when wet (default: `1800`)
+- `YELLOW_BLINK_INTERVAL` — seconds between yellow reminder blinks when marginal (default: `120`)
+- `SMOOTHING_SAMPLES` — median window size to reduce sensor noise (default: `9`)
 
 ### 3. Deploy code
 
@@ -58,14 +63,16 @@ The device publishes via **MQTT Discovery** — it will auto-appear under *Setti
 
 ## Tuning
 
-All thresholds are at the top of `code.py`:
+All settings live in `settings.toml` (copy from `settings.toml.example`):
 
-| Variable              | Default | Description                          |
-|-----------------------|---------|--------------------------------------|
-| `DRY_THRESHOLD`       | 400     | Below this = dry (red LED)           |
-| `WET_THRESHOLD`       | 500     | Below this = marginal (yellow LED)   |
-| `GREEN_BLINK_INTERVAL`| 1800 s  | How often to blink green when wet    |
-| `PUBLISH_INTERVAL`    | 60 s    | How often to publish to MQTT         |
+| Variable               | Default | Description                                      |
+|------------------------|---------|--------------------------------------------------|
+| `DRY_THRESHOLD`        | 400     | Below this = dry (red LED)                       |
+| `WET_THRESHOLD`        | 500     | Below this = marginal (yellow LED)               |
+| `GREEN_BLINK_INTERVAL` | 1800 s  | How often to blink green when wet                |
+| `YELLOW_BLINK_INTERVAL`| 120 s   | How often to blink yellow when marginal          |
+| `PUBLISH_INTERVAL`     | 60 s    | How often to publish to MQTT                     |
+| `SMOOTHING_SAMPLES`    | 9       | Median window size to filter out sensor spikes   |
 
 ## Files
 
