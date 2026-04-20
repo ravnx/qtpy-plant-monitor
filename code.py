@@ -1,13 +1,15 @@
 # Soil Moisture Monitor
 #
-# Moisture  | Light
-# ----------|---------------------------
-# < 400     | Solid red
-# 400 - 499 | Blinking yellow
-# >= 500    | Green blink every 30 min
+# LED behavior is controlled by:
+# - DRY_THRESHOLD
+# - WET_THRESHOLD
+# - HYSTERESIS
+# - WARNING_MODE ("glow" or "blink")
 #
-# Publishes moisture + temperature to Home Assistant via MQTT Discovery.
-# Configure broker credentials and thresholds in settings.toml.
+# State machine:
+#   dry     -> solid red
+#   warning -> configurable amber glow/blink
+#   wet     -> brief green blink every GREEN_BLINK_INTERVAL
 
 import time
 import os
@@ -169,7 +171,7 @@ while True:
     # Publish to MQTT on interval
     now = time.monotonic()
     if now - last_publish >= PUBLISH_INTERVAL:
-        payload = json.dumps({"moisture": moisture, "temperature": round(temp_c, 2)})
+        payload = json.dumps({"moisture": moisture, "temperature": round(temp_c, 2), "state": state})
         try:
             mqtt_client.publish(STATE_TOPIC, payload, retain=True)
             print("Published:", payload)
