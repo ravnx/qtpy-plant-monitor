@@ -26,6 +26,7 @@ WET_THRESHOLD = int(os.getenv("WET_THRESHOLD", "500"))
 GREEN_BLINK_INTERVAL = int(os.getenv("GREEN_BLINK_INTERVAL", "1800"))  # seconds
 PUBLISH_INTERVAL = int(os.getenv("PUBLISH_INTERVAL", "60"))           # seconds between MQTT publishes
 SMOOTHING_SAMPLES = int(os.getenv("SMOOTHING_SAMPLES", "9"))          # rolling average window
+HYSTERESIS = int(os.getenv("HYSTERESIS", "50"))                         # band around thresholds to prevent flickering
 _wc = os.getenv("WARNING_COLOR", "50,30,0").split(",")
 WARNING_COLOR = (int(_wc[0]), int(_wc[1]), int(_wc[2]))  # RGB for marginal state
 WARNING_MODE = os.getenv("WARNING_MODE", "glow")           # "glow" or "blink"
@@ -50,6 +51,7 @@ print("WARNING_COLOR =", WARNING_COLOR)
 print("WARNING_MODE =", WARNING_MODE)
 if WARNING_MODE == "blink":
     print("WARNING_BLINK_INTERVAL =", WARNING_BLINK_INTERVAL)
+print("HYSTERESIS =", HYSTERESIS)
 
 # --- Hardware setup ---
 pixel = neopixel.NeoPixel(board.NEOPIXEL, 1, brightness=0.2, auto_write=True)
@@ -120,6 +122,7 @@ last_green_blink = 0
 last_warning_blink = 0
 last_publish = 0
 moisture_samples = []
+state = None  # "dry" | "warning" | "wet"
 
 while True:
     raw_moisture = ss.moisture_read()
@@ -136,7 +139,32 @@ while True:
     else:
         moisture = (sorted_samples[mid - 1] + sorted_samples[mid]) // 2
 
-    print("Moisture:", moisture, "(raw:", raw_moisture, ") Temp C:", round(temp_c, 2))
+    # State transition with hysteresis to prevent flickering at threshold boundaries
+    prev_state = state
+    if state is None:
+        # Initial state - derive directly from thresholds with no hysteresis
+        if moisture < DRY_THRESHOLD:
+            state = "dry"
+        elif moisture < WET_THRESHOLD:
+            state = "warning"
+        else:
+            state = "wet"
+    elif state == "dry":
+        if moisture >= DRY_THRESHOLD + HYSTERESIS:
+            state = "warning"
+    elif state == "warning":
+        if moisture < DRY_THRESHOLD - HYSTERESIS:
+            state = "dry"
+        elif moisture >= WET_THRESHOLD + HYSTERESIS:
+            state = "wet"
+    elif state == "wet":
+        if moisture < WET_THRESHOLD - HYSTERESIS:
+            state = "warning"
+
+    if state != prev_state:
+        print("State:", prev_state, "->", state)
+
+    print("Moisture:", moisture, "(raw:", raw_moisture, ") Temp C:", round(temp_c, 2), "State:", state)
 
     # Publish to MQTT on interval
     now = time.monotonic()
@@ -155,12 +183,12 @@ while True:
         last_publish = now
 
     # LED status
-    if moisture < DRY_THRESHOLD:
+    if state == "dry":
         # Solid red - dry / in air
         pixel[0] = (255, 0, 0)
         time.sleep(2)
 
-    elif moisture < WET_THRESHOLD:
+    elif state == "warning":
         if WARNING_MODE == "blink":
             if now - last_warning_blink >= WARNING_BLINK_INTERVAL:
                 pixel[0] = WARNING_COLOR
@@ -173,7 +201,7 @@ while True:
             pixel[0] = WARNING_COLOR
         time.sleep(2)
 
-    else:
+    else:  # wet
         # Wet enough - brief green blink every 30 minutes
         if now - last_green_blink >= GREEN_BLINK_INTERVAL:
             pixel[0] = (0, 255, 0)
