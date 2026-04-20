@@ -10,13 +10,17 @@ CircuitPython project for an Adafruit STEMMA soil sensor. Reads moisture and tem
 
 ## LED Status
 
-| Moisture  | Light                      |
-|-----------|----------------------------|
-| < 400     | Solid red                  |
-| 400–499   | Warning color (glow or blink, configurable) |
-| ≥ 500     | Brief green blink every 30 min |
+The LED is driven by a state machine with hysteresis — the state only changes when moisture crosses a threshold by more than `HYSTERESIS` points, preventing flickering at boundaries.
+
+| State     | Condition                         | Light                                    |
+|-----------|-----------------------------------|------------------------------------------|
+| `dry`     | moisture < `DRY_THRESHOLD`        | Solid red                                |
+| `warning` | between dry and wet thresholds    | Configurable amber glow or periodic blink |
+| `wet`     | moisture ≥ `WET_THRESHOLD`        | Brief green blink every `GREEN_BLINK_INTERVAL` |
 
 The sensor reads ~345 when held in air (not in soil).
+
+On startup the board collects `SMOOTHING_SAMPLES` readings before entering normal operation ("warming up").
 
 ## Setup
 
@@ -41,7 +45,8 @@ Edit `/Volumes/CIRCUITPY/settings.toml`:
 - `MQTT_BROKER` — your Home Assistant IP address
 - `MQTT_USERNAME` / `MQTT_PASSWORD` — MQTT broker credentials (set up in HA)
 - `MQTT_DEVICE_ID` — unique ID for this device (default: `plant_monitor`)
-- `DRY_THRESHOLD` / `WET_THRESHOLD` — moisture thresholds for LED colours
+- `DRY_THRESHOLD` / `WET_THRESHOLD` — moisture thresholds for LED state
+- `HYSTERESIS` — dead-band around each threshold to prevent flickering (default: `50`)
 - `PUBLISH_INTERVAL` — seconds between MQTT publishes (default: `60`)
 - `GREEN_BLINK_INTERVAL` — seconds between green blinks when wet (default: `1800`)
 - `WARNING_COLOR` — RGB color for the marginal state as `"R,G,B"` (default: `"50,30,0"` amber)
@@ -63,25 +68,30 @@ The device publishes via **MQTT Discovery** — it will auto-appear under *Setti
 - `sensor.soil_moisture`
 - `sensor.soil_temperature`
 
+Each MQTT payload also includes a `state` field (`dry`, `warning`, or `wet`) you can use in automations.
+
 ## Tuning
 
 All settings live in `settings.toml` (copy from `settings.toml.example`):
 
-| Variable               | Default | Description                                      |
-|------------------------|---------|--------------------------------------------------|
-| `DRY_THRESHOLD`        | 400     | Below this = dry (red LED)                       |
-| `WET_THRESHOLD`        | 500     | Below this = marginal (yellow LED)               |
-| `GREEN_BLINK_INTERVAL` | 1800 s    | How often to blink green when wet                     |
-| `WARNING_COLOR`        | `50,30,0` | RGB color for marginal state (`"R,G,B"`)              |
-| `WARNING_MODE`         | `glow`    | `glow` (steady) or `blink`                            |
-| `WARNING_BLINK_INTERVAL`| 120 s    | Seconds between blinks (only when `WARNING_MODE=blink`) |
-| `PUBLISH_INTERVAL`     | 60 s      | How often to publish to MQTT                          |
-| `SMOOTHING_SAMPLES`    | 9       | Median window size to filter out sensor spikes   |
+| Variable                | Default   | Description                                             |
+|-------------------------|-----------|---------------------------------------------------------|
+| `DRY_THRESHOLD`         | 400       | Below this = dry (red LED)                              |
+| `WET_THRESHOLD`         | 500       | Above this = wet (green LED)                            |
+| `HYSTERESIS`            | 50        | Dead-band around thresholds to prevent state flickering |
+| `GREEN_BLINK_INTERVAL`  | 1800 s    | How often to blink green when wet                       |
+| `WARNING_COLOR`         | `50,30,0` | RGB color for marginal state (`"R,G,B"`)                |
+| `WARNING_MODE`          | `glow`    | `glow` (steady) or `blink`                              |
+| `WARNING_BLINK_INTERVAL`| 120 s     | Seconds between blinks (only when `WARNING_MODE=blink`) |
+| `PUBLISH_INTERVAL`      | 60 s      | How often to publish to MQTT                            |
+| `SMOOTHING_SAMPLES`     | 9         | Median window size to filter sensor noise; also warmup sample count |
+
+Capacitive soil sensors are noisy. Increasing `SMOOTHING_SAMPLES` (e.g. to `15` or `21`) gives a cleaner MQTT graph without affecting responsiveness much, since soil moisture changes slowly.
 
 ## Files
 
-| File                   | Where                    | Notes                        |
-|------------------------|--------------------------|------------------------------|
-| `code.py`              | `/Volumes/CIRCUITPY/`    | Main program                 |
-| `settings.toml.example`| repo root                | Safe template to commit      |
-| `requirements.txt`     | repo root                | circup library list          |
+| File                    | Where                 | Notes                        |
+|-------------------------|-----------------------|------------------------------|
+| `code.py`               | `/Volumes/CIRCUITPY/` | Main program                 |
+| `settings.toml.example` | repo root             | Configuration Template       |
+| `requirements.txt`      | repo root             | circup library list          |
