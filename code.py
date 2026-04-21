@@ -29,8 +29,9 @@ GREEN_BLINK_INTERVAL = int(os.getenv("GREEN_BLINK_INTERVAL", "1800"))  # seconds
 PUBLISH_INTERVAL = int(os.getenv("PUBLISH_INTERVAL", "60"))           # seconds between MQTT publishes
 SMOOTHING_SAMPLES = int(os.getenv("SMOOTHING_SAMPLES", "9"))          # rolling average window
 HYSTERESIS = int(os.getenv("HYSTERESIS", "50"))                         # band around thresholds to prevent flickering
+READ_DELAY = int(os.getenv("READ_DELAY", "2"))                            # seconds between sensor reads (firmware Jan 2020 recommends >= 1s)
 _wc = os.getenv("WARNING_COLOR", "50,30,0").split(",")
-WARNING_COLOR = (int(_wc[0]), int(_wc[1]), int(_wc[2]))  # RGB for marginal state
+WARNING_COLOR = (int(_wc[0].strip()), int(_wc[1].strip()), int(_wc[2].strip()))  # RGB for marginal state
 WARNING_MODE = os.getenv("WARNING_MODE", "glow")           # "glow" or "blink"
 WARNING_BLINK_INTERVAL = int(os.getenv("WARNING_BLINK_INTERVAL", "120"))  # seconds (blink mode only)
 
@@ -54,6 +55,7 @@ print("WARNING_MODE =", WARNING_MODE)
 if WARNING_MODE == "blink":
     print("WARNING_BLINK_INTERVAL =", WARNING_BLINK_INTERVAL)
 print("HYSTERESIS =", HYSTERESIS)
+print("READ_DELAY =", READ_DELAY)
 
 # --- Hardware setup ---
 pixel = neopixel.NeoPixel(board.NEOPIXEL, 1, brightness=0.2, auto_write=True)
@@ -137,7 +139,7 @@ while True:
 
     if len(moisture_samples) < SMOOTHING_SAMPLES:
         print("Warming up samples:", len(moisture_samples), "/", SMOOTHING_SAMPLES)
-        time.sleep(1)
+        time.sleep(READ_DELAY)
         continue
 
     sorted_samples = sorted(moisture_samples)
@@ -194,7 +196,7 @@ while True:
     if state == "dry":
         # Solid red - dry / in air
         pixel[0] = (255, 0, 0)
-        time.sleep(2)
+        time.sleep(READ_DELAY)
 
     elif state == "warning":
         if WARNING_MODE == "blink":
@@ -207,7 +209,7 @@ while True:
                 pixel[0] = (0, 0, 0)
         else:  # glow
             pixel[0] = WARNING_COLOR
-        time.sleep(2)
+        time.sleep(READ_DELAY)
 
     else:  # wet
         # Wet enough - brief green blink every 30 minutes
@@ -218,4 +220,4 @@ while True:
             last_green_blink = now
         else:
             pixel[0] = (0, 0, 0)
-        time.sleep(2)
+        time.sleep(READ_DELAY)
