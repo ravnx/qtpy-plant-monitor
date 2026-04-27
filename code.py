@@ -35,6 +35,8 @@ WARNING_COLOR = (int(_wc[0].strip()), int(_wc[1].strip()), int(_wc[2].strip())) 
 WARNING_MODE = os.getenv("WARNING_MODE", "glow")           # "glow" or "blink"
 WARNING_BLINK_INTERVAL = int(os.getenv("WARNING_BLINK_INTERVAL", "120"))  # seconds (blink mode only)
 
+CALIBRATE = int(os.getenv("CALIBRATE", "0"))
+
 DEVICE_ID = os.getenv("MQTT_DEVICE_ID", "plant_monitor")
 MQTT_BROKER = os.getenv("MQTT_BROKER")
 MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
@@ -62,12 +64,50 @@ pixel = neopixel.NeoPixel(board.NEOPIXEL, 1, brightness=0.2, auto_write=True)
 i2c = busio.I2C(board.SCL, board.SDA)
 ss = Seesaw(i2c, addr=0x36)
 
-# --- WiFi ---
-print("Connecting to WiFi...")
-pixel[0] = (0, 0, 50)  # dim blue while connecting
-wifi.radio.connect(os.getenv("CIRCUITPY_WIFI_SSID"), os.getenv("CIRCUITPY_WIFI_PASSWORD"))
-print("WiFi connected:", wifi.radio.ipv4_address)
+# --- Calibration mode: print smoothed readings, skip WiFi/MQTT/state machine ---
+if CALIBRATE:
+    print("=== CALIBRATION MODE ===")
+    print("Hold probe in air, then submerge gold pad up to the line.")
+    print("Watch the smoothed reading and record air-min and water-max.")
+    pixel[0] = (0, 0, 50)
+    samples = []
+    window = 9
+    while True:
+        try:
+            raw = ss.moisture_read()
+            temp_c = ss.get_temp()
+        except Exception as e:
+            print("Sensor error:", e)
+            time.sleep(1)
+            continue
+        samples.append(raw)
+        if len(samples) > window:
+            samples.pop(0)
+        s = sorted(samples)
+        med = s[len(s) // 2] if len(s) % 2 else (s[len(s)//2 - 1] + s[len(s)//2]) // 2
+        print("raw:", raw, " smoothed:", med, " temp C:", round(temp_c, 2))
+        time.sleep(1)
 
+import microcontroller
+import supervisor
+
+# --- WiFi (with retry) ---
+def connect_wifi():
+    print("Connecting to WiFi...")
+    pixel[0] = (0, 0, 50)  # dim blue while connecting
+    for attempt in range(5):
+        try:
+            wifi.radio.connect(os.getenv("CIRCUITPY_WIFI_SSID"), os.getenv("CIRCUITPY_WIFI_PASSWORD"))
+            print("WiFi connected:", wifi.radio.ipv4_address)
+            return
+        except Exception as e:
+            print("WiFi connect failed (attempt", attempt + 1, "):", e)
+            time.sleep(5)
+    print("WiFi unreachable, hard reset")
+    time.sleep(2)
+    microcontroller.reset()
+
+connect_wifi()
 pool = socketpool.SocketPool(wifi.radio)
 
 # --- MQTT ---
@@ -77,10 +117,24 @@ mqtt_client = MQTT.MQTT(
     username=MQTT_USERNAME,
     password=MQTT_PASSWORD,
     socket_pool=pool,
+    keep_alive=120,
 )
 
-mqtt_client.connect()
-print("MQTT connected")
+def mqtt_connect():
+    for attempt in range(5):
+        try:
+            mqtt_client.connect()
+            print("MQTT connected")
+            return True
+        except Exception as e:
+            print("MQTT connect failed (attempt", attempt + 1, "):", e)
+            time.sleep(5)
+    return False
+
+if not mqtt_connect():
+    print("MQTT unreachable, hard reset")
+    time.sleep(2)
+    microcontroller.reset()
 
 # --- Home Assistant MQTT Discovery ---
 device_info = {
@@ -116,10 +170,16 @@ for sensor in [
 ]:
     sensor["device"] = device_info
     topic = f"homeassistant/sensor/{sensor['unique_id']}/config"
-    mqtt_client.publish(topic, json.dumps(sensor), retain=True)
+    try:
+        mqtt_client.publish(topic, json.dumps(sensor), retain=True)
+    except Exception as e:
+        print("HA discovery publish failed:", e)
 
 print("HA discovery published")
-mqtt_client.publish(AVAILABILITY_TOPIC, "online", retain=True)
+try:
+    mqtt_client.publish(AVAILABILITY_TOPIC, "online", retain=True)
+except Exception as e:
+    print("Availability publish failed:", e)
 
 # --- Main loop ---
 last_green_blink = 0
@@ -128,9 +188,41 @@ last_publish = 0
 moisture_samples = []
 state = None  # "dry" | "warning" | "wet"
 
+last_loop = 0
+sensor_error_count = 0
+
 while True:
-    raw_moisture = ss.moisture_read()
-    temp_c = ss.get_temp()
+    try:
+        raw_moisture = ss.moisture_read()
+        temp_c = ss.get_temp()
+        sensor_error_count = 0
+    except Exception as e:
+        sensor_error_count += 1
+        print("Sensor read error (", sensor_error_count, "):", e)
+        if sensor_error_count >= 10:
+            print("Too many sensor errors, hard reset")
+            time.sleep(2)
+            microcontroller.reset()
+        time.sleep(READ_DELAY)
+        continue
+
+    # Service MQTT (pings, server packets) so the broker doesn't drop us
+    now = time.monotonic()
+    if now - last_loop >= 15:
+        try:
+            mqtt_client.loop(timeout=1)
+        except Exception as e:
+            print("MQTT loop error:", e)
+            try:
+                mqtt_client.reconnect()
+                mqtt_client.publish(AVAILABILITY_TOPIC, "online", retain=True)
+            except Exception as e2:
+                print("MQTT reconnect failed:", e2)
+                if not wifi.radio.connected:
+                    print("WiFi dropped, hard reset")
+                    time.sleep(2)
+                    microcontroller.reset()
+        last_loop = now
 
     # Median smoothing - resistant to spikes
     moisture_samples.append(raw_moisture)
